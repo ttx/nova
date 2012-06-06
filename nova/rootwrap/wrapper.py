@@ -16,29 +16,32 @@
 #    under the License.
 
 
+import ConfigParser
 import os
-import sys
+import string
+
+from nova.rootwrap import filters
 
 
-FILTERS_MODULES = ['nova.rootwrap.compute',
-                   'nova.rootwrap.network',
-                   'nova.rootwrap.volume',
-                  ]
+def load_config(configdir):
+    """Returns a RawConfigParser from a set of INI files in configdir"""
+    config = ConfigParser.RawConfigParser()
+    config.read(os.path.join(configdir, f) for f in os.listdir(configdir))
+    return config
 
 
-def load_filters():
-    """Load filters from modules present in nova.rootwrap."""
-    filters = []
-    for modulename in FILTERS_MODULES:
+def load_filters(config):
+    """Load filters from configuration"""
+    filterlist = []
+    for (name, value) in config.items("Filters"):
+        filterdefinition = map(string.strip,value.split(","))
         try:
-            __import__(modulename)
-            module = sys.modules[modulename]
-            filters = filters + module.filterlist
-        except ImportError:
-            # It's OK to have missing filters, since filter modules are
-            # shipped with specific nodes rather than with python-nova
+            filterclass = getattr(filters, filterdefinition[0])
+            filterlist.append(filterclass(*filterdefinition[1:]))
+        except AttributeError:
+            #TODO: Log the error
             pass
-    return filters
+    return filterlist
 
 
 def match_filter(filters, userargs):
